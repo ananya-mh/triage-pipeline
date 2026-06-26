@@ -1,5 +1,5 @@
 google-generativeai
-jsonschema
-watchdog
-requests
 python-dotenv
+jsonschema
+requests
+watchdog
