@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-MODEL_NAME = "gemini-2.0-flash"
+# Gemma 4 is the project's target model (matches the original triage.py).
+# Override via MODEL_NAME env var, e.g. "gemma-4-26b-a4b-it" if rate-limited.
+MODEL_NAME = os.getenv("MODEL_NAME", "gemma-4-31b-it")
 
 CHUNK_SIZE = 80
 CHUNK_OVERLAP = 10

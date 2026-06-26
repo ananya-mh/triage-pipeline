@@ -5,38 +5,66 @@ import re
 from log_triage.schema import validate_event
 
 
-def repair_json(raw: str) -> str:
-    """Attempt to fix common LLM JSON output issues."""
-    text = raw.strip()
+_DECODER = json.JSONDecoder()
 
+
+def repair_json(raw: str) -> str:
+    """Cheap first-pass repair: strip markdown fences and trailing commas."""
+    text = raw.strip()
     text = re.sub(r"^```(?:json)?\s*\n?", "", text)
     text = re.sub(r"\n?```\s*$", "", text)
-
-    match = re.search(r"\[.*\]", text, re.DOTALL)
-    if match:
-        text = match.group(0)
-
     text = re.sub(r",\s*([}\]])", r"\1", text)
-
     return text.strip()
 
 
-def parse_response(raw: str) -> list[dict]:
-    """Parse raw model response into a list of event dicts."""
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        repaired = repair_json(raw)
-        try:
-            parsed = json.loads(repaired)
-        except json.JSONDecodeError:
-            return []
+def _scan_json_arrays(text: str) -> list:
+    """Find every parseable JSON array-of-objects in `text`, in order.
 
-    if isinstance(parsed, dict):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        return []
-    return parsed
+    Chain-of-thought models (notably Gemma) wrap their final JSON in pages of
+    markdown reasoning that contains stray brackets ("[20882]", "[1]"). A
+    greedy regex grabs from the first such bracket and fails to parse. Instead
+    we walk every '[' and let json's decoder try to parse a value there; only
+    arrays whose elements are all objects are kept. The model's real answer is
+    the LAST one.
+    """
+    found = []
+    idx, n = 0, len(text)
+    while idx < n:
+        start = text.find("[", idx)
+        if start == -1:
+            break
+        try:
+            obj, end = _DECODER.raw_decode(text, start)
+        except json.JSONDecodeError:
+            idx = start + 1
+            continue
+        if isinstance(obj, list) and all(isinstance(e, dict) for e in obj):
+            found.append(obj)
+        idx = max(end, start + 1)
+    return found
+
+
+def parse_response(raw: str) -> list[dict]:
+    """Parse a raw model response into a list of event dicts.
+
+    Robust to CoT models that emit prose before the JSON: try a clean parse,
+    then a fence/comma repair, then scan for the LAST valid JSON array.
+    """
+    text = raw.strip()
+    for candidate in (text, repair_json(text)):
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return [parsed]
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+    arrays = _scan_json_arrays(text)
+    if arrays:
+        return arrays[-1]  # the model's final answer, after any reasoning
+    return []
 
 
 def validate_events(events: list[dict]) -> list[dict]:
