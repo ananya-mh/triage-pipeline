@@ -1,4 +1,5 @@
-ollama
+google-generativeai
 jsonschema
 watchdog
 requests
+python-dotenv
