@@ -11,6 +11,13 @@ class ErrorSeverity(str, Enum):
     FATAL = "FATAL"
 
 
+# Severity the model emits for a clean chunk with no anomaly. Deliberately NOT
+# part of ErrorSeverity / ANOMALY_SCHEMA: "no anomaly" is the ABSENCE of an
+# event, not an event with severity NONE, so it must never appear as a row in
+# the output. validator.extract_and_validate recognizes and drops it.
+NO_ANOMALY_SEVERITY = "NONE"
+
+
 class AlertRoute(str, Enum):
     SILENT = "silent"
     QUEUE = "queue"

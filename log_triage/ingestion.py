@@ -135,15 +135,66 @@ def chunk_lines(lines: list[str], chunk_size: int = None) -> list[str]:
     return chunks
 
 
+def _priority_score(chunk: str) -> int:
+    """Count priority-keyword hits in a chunk — used to rank chunks for the cap."""
+    lower = chunk.lower()
+    return sum(lower.count(kw) for kw in PRIORITY_KEYWORDS)
+
+
+def cap_chunks(chunks: list[str], limit: int) -> list[str]:
+    """Hard-cap to `limit` chunks, keeping those richest in priority keywords.
+
+    Original order is preserved among the kept chunks. This is the last resort
+    when keyword prioritization still can't get under budget (e.g. logs whose
+    lines contain none of PRIORITY_KEYWORDS, so nothing gets dropped earlier).
+    """
+    if len(chunks) <= limit:
+        return chunks
+    ranked = sorted(range(len(chunks)),
+                    key=lambda i: _priority_score(chunks[i]), reverse=True)
+    keep = set(ranked[:limit])
+    return [chunks[i] for i in range(len(chunks)) if i in keep]
+
+
 def get_log_chunks(filepath: str) -> list[str]:
-    """Read a log file, filter noise, prioritize, and return chunks for the model."""
+    """Read a log file, strip noise, and return chunks for the model.
+
+    Gemma owns anomaly detection: by default the full noise-reduced stream is
+    chunked and sent. Only when that exceeds config.MAX_CHUNKS do we fall back
+    to keyword prioritization, then — if still over — a hard cap to the most
+    anomaly-dense chunks. Every drop is logged, never silently discarded.
+    """
     raw = read_log_file(filepath)
     lines = raw.splitlines()
-    filtered = prefilter(lines)
+    profile = detect_profile(lines)
+    filtered = prefilter(lines, profile=profile)
     if not filtered:
         return []
+
+    chunks = chunk_lines(filtered)
+    if len(chunks) <= config.MAX_CHUNKS:
+        print(f"[ingest] profile={profile}: {len(filtered)} lines -> "
+              f"{len(chunks)} chunk(s), within budget (Gemma triages all).")
+        return chunks
+
+    # Over budget — prioritize keyword-flagged lines + context so Gemma still
+    # gets the most likely anomalies without an unaffordable call count.
     relevant = context_aware_filter(filtered)
-    return chunk_lines(relevant)
+    reduced = chunk_lines(relevant)
+    dropped_lines = len(filtered) - len(relevant)
+
+    if len(reduced) <= config.MAX_CHUNKS:
+        print(f"[budget] profile={profile}: {len(chunks)} chunks > "
+              f"MAX_CHUNKS={config.MAX_CHUNKS}; keyword-prioritized, dropped "
+              f"{dropped_lines} non-priority line(s) -> {len(reduced)} chunk(s).")
+        return reduced
+
+    # Still over budget — enforce the cap on the most anomaly-dense chunks.
+    capped = cap_chunks(reduced, config.MAX_CHUNKS)
+    print(f"[budget] profile={profile}: still {len(reduced)} chunks after "
+          f"prioritization; HARD CAP to {config.MAX_CHUNKS} highest-priority "
+          f"chunk(s). {len(reduced) - len(capped)} chunk(s) NOT seen by the model.")
+    return capped
 
 
 if __name__ == "__main__":
@@ -152,10 +203,10 @@ if __name__ == "__main__":
     output_dir = os.path.join(project_root, "output")
 
     input_path = sys.argv[1] if len(sys.argv) > 1 else default_input
-    profile = sys.argv[2] if len(sys.argv) > 2 else "linux"
     raw = read_log_file(input_path)
     lines = raw.splitlines()
     total = len(lines)
+    profile = sys.argv[2] if len(sys.argv) > 2 else detect_profile(lines)
     filtered = prefilter(lines, profile=profile)
     relevant = context_aware_filter(filtered)
     os.makedirs(output_dir, exist_ok=True)

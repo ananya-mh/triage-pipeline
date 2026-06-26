@@ -2,7 +2,7 @@
 
 import json
 import re
-from log_triage.schema import validate_event
+from log_triage.schema import validate_event, NO_ANOMALY_SEVERITY
 
 
 _DECODER = json.JSONDecoder()
@@ -67,6 +67,19 @@ def parse_response(raw: str) -> list[dict]:
     return []
 
 
+def is_no_anomaly(event: dict) -> bool:
+    """True if the model explicitly signalled 'no anomaly in this chunk'.
+
+    Gemma returns {"error_severity": "NONE", ...} for a clean chunk. That is the
+    absence of an event, not an event — so we recognize it here and drop it
+    cleanly, rather than letting it fail schema validation by accident (which on
+    a retry-based caller would burn retries on a perfectly correct answer, and
+    risks polluting the output with an empty NONE row if the schema ever widens).
+    """
+    severity = str(event.get("error_severity", "")).strip().upper()
+    return severity == NO_ANOMALY_SEVERITY
+
+
 def validate_events(events: list[dict]) -> list[dict]:
     """Filter events to only those passing schema validation."""
     valid = []
@@ -96,6 +109,9 @@ def extract_and_validate(raw: str, chunk: str | None = None) -> list[dict]:
     and (when the source chunk is supplied) drop hallucinated/ungrounded events.
     """
     events = parse_response(raw)
+    # A "no anomaly" sentinel is a correct answer meaning "nothing here" — drop
+    # it cleanly so it is never treated as malformed nor emitted as a row.
+    events = [e for e in events if not is_no_anomaly(e)]
     valid = validate_events(events)
     if chunk is not None:
         valid = filter_grounded(valid, chunk)
