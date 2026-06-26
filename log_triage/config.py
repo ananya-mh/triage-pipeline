@@ -13,6 +13,12 @@ MODEL_NAME = os.getenv("MODEL_NAME", "gemma-4-31b-it")
 CHUNK_SIZE = 80
 CHUNK_OVERLAP = 10
 
+# Max chunks sent to the model before falling back to keyword prioritization.
+# Under this budget, Gemma triages the full noise-reduced stream (it owns
+# anomaly detection). Above it, keyword filtering kicks in to stay affordable,
+# and the dropped lines are logged — never silently discarded.
+MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "15"))
+
 MAX_RETRIES = 2
 RETRY_DELAY = 1
 
