@@ -57,6 +57,18 @@ PRIORITY_KEYWORDS = [
 ]
 
 
+def detect_profile(lines: list[str]) -> str:
+    """Auto-detect the noise profile from the first 50 lines."""
+    sample = [line.lower() for line in lines[:50]]
+    for line in sample:
+        if "dfs." in line or "hdfs" in line or "namenode" in line:
+            return "hdfs"
+    for line in sample:
+        if "sshd" in line or "pam_unix" in line or "cron" in line:
+            return "linux"
+    return "common"
+
+
 def read_log_file(filepath: str) -> str:
     """Read the entire log file, handling common encodings."""
     for enc in ("utf-8-sig", "utf-8", "latin-1"):
