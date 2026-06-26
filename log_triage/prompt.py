@@ -51,8 +51,12 @@ source_line:
   paraphrase, summarize, or invent it. (This is verified downstream.)
 
 WHAT TO FLAG
-- Only genuine anomalies: errors, crashes, failures, resource exhaustion,
-  security events. Ignore routine info, startup/heartbeat/session noise.
+- Genuine anomalies: errors, crashes, failures, resource exhaustion, security
+  events. Ignore routine info, startup/heartbeat/session noise.
+- ALWAYS flag security-relevant events even when there is NO error or failure
+  keyword: anonymous or unexpected logins, privilege escalation, new sudo/root
+  grants, and logins or access from external/unknown IPs. When there is no
+  outright failure, use INFO or WARNING severity (do not silently drop them).
 - Collapse repeated identical errors into ONE object.
 - Treat a multi-line stack trace as ONE event: use the first line's timestamp
   and service, and summarize the root cause in suggested_remediation.
@@ -77,18 +81,43 @@ Flag only genuine errors/failures/security events. Return [] if none.
 
 _model = genai.GenerativeModel(config.MODEL_NAME)
 
+# Assistant-prefill seed: seeding a model turn that opens the array with "[" so
+# the model can only continue inside the JSON. NOTE (empirical, Gemma 4): this
+# suppresses the chain-of-thought but BACKFIRES -- without the reasoning warm-up
+# Gemma loops/repeats the array and degrades key quality ("sourse_line", lowercase
+# severities). The CoT version yields cleaner single-array output, and our
+# validator scanner already strips the prose. So prefill defaults OFF; kept here
+# behind a flag for experimentation (e.g. smaller models / future tuning).
+PREFILL = "["
 
-def call_gemini(chunk: str, use_fallback: bool = False, temperature: float = 0.0) -> str:
-    """Send a log chunk to Gemini and return the raw response text.
+# Generous ceiling: bounds a runaway generation without truncating CoT + JSON.
+MAX_OUTPUT_TOKENS = 8192
 
-    temperature=0.0 is deterministic (foundational / single pass). Best-of-N
-    sampling raises it so the N draws differ -- see sample_candidates().
+
+def call_gemini(chunk: str, use_fallback: bool = False, temperature: float = 0.0,
+                use_prefill: bool = False) -> str:
+    """Send a log chunk to the model and return the raw response text.
+
+    temperature=0.0 is deterministic (single pass); best-of-N raises it so the
+    N draws differ. use_prefill seeds the reply with "[" to force JSON-only
+    output -- but it degrades Gemma 4 quality (see PREFILL note), so it is OFF
+    by default; the validator's scanner handles the chain-of-thought instead.
     """
     prompt = FALLBACK_PROMPT if use_fallback else SYSTEM_PROMPT
-    response = _model.generate_content(
-        f"{prompt}\n\n--- LOG CHUNK ---\n{chunk}\n--- END ---",
-        generation_config=genai.types.GenerationConfig(temperature=temperature),
+    user_text = f"{prompt}\n\n--- LOG CHUNK ---\n{chunk}\n--- END ---"
+    gen_config = genai.types.GenerationConfig(
+        temperature=temperature, max_output_tokens=MAX_OUTPUT_TOKENS
     )
+
+    if use_prefill:
+        contents = [
+            {"role": "user", "parts": [user_text]},
+            {"role": "model", "parts": [PREFILL]},
+        ]
+        response = _model.generate_content(contents, generation_config=gen_config)
+        return PREFILL + response.text  # re-attach the seeded "["
+
+    response = _model.generate_content(user_text, generation_config=gen_config)
     return response.text
 
 
