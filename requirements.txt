@@ -1,4 +1,4 @@
-ollama
+google-generativeai
+python-dotenv
 jsonschema
-watchdog
 requests

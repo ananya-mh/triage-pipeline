@@ -49,7 +49,26 @@ def validate_events(events: list[dict]) -> list[dict]:
     return valid
 
 
-def extract_and_validate(raw: str) -> list[dict]:
-    """Full pipeline: parse raw response, repair if needed, validate."""
+def is_grounded(event: dict, chunk: str) -> bool:
+    """Anti-hallucination check: the cited source_line must appear VERBATIM in
+    the chunk the model was given. A fabricated source_line fails this, which
+    is the core reward signal for best-of-N voting (and future RLVR).
+    """
+    source = (event.get("source_line") or "").strip()
+    return bool(source) and source in chunk
+
+
+def filter_grounded(events: list[dict], chunk: str) -> list[dict]:
+    """Keep only events whose source_line is verbatim-present in the chunk."""
+    return [e for e in events if is_grounded(e, chunk)]
+
+
+def extract_and_validate(raw: str, chunk: str | None = None) -> list[dict]:
+    """Full pipeline: parse raw response, repair if needed, schema-validate,
+    and (when the source chunk is supplied) drop hallucinated/ungrounded events.
+    """
     events = parse_response(raw)
-    return validate_events(events)
+    valid = validate_events(events)
+    if chunk is not None:
+        valid = filter_grounded(valid, chunk)
+    return valid
