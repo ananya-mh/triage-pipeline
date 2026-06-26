@@ -1,0 +1,16 @@
+Jun 15 02:04:59 combo sshd(pam_unix)[20882]: authentication failure; logname= uid=0 euid=0 tty=NODEVssh ruser= rhost=220-135-151-1.hinet-ip.hinet.net  user=root
+Jun 15 02:04:59 combo sshd(pam_unix)[20883]: authentication failure; logname= uid=0 euid=0 tty=NODEVssh ruser= rhost=220-135-151-1.hinet-ip.hinet.net  user=root
+Jun 15 04:06:18 combo su(pam_unix)[21416]: session opened for user cyrus by (uid=0)
+Jun 15 04:06:19 combo su(pam_unix)[21416]: session closed for user cyrus
+Jun 15 04:06:20 combo logrotate: ALERT exited abnormally with [1]
+Jun 15 04:12:42 combo su(pam_unix)[22644]: session opened for user news by (uid=0)
+Jun 15 04:12:43 combo su(pam_unix)[22644]: session closed for user news
+Jun 17 07:07:00 combo ftpd[29504]: connection from 24.54.76.216 (24-54-76-216.bflony.adelphia.net) at Fri Jun 17 07:07:00 2005
+Jun 24 02:38:23 combo ftpd[16781]: ANONYMOUS FTP LOGIN FROM 84.102.20.2,  (anonymous)
+Jun 30 20:53:04 combo klogind[19272]: Authentication failed from 163.27.187.39 (163.27.187.39): Permission denied in replay cache code
+Jun 30 20:53:04 combo klogind[19272]: Kerberos authentication failed
+Jun 30 20:53:06 combo klogind[19274]: Authentication failed from 163.27.187.39 (163.27.187.39): Software caused connection abort
+Jul 25 23:23:13 combo ftpd[26463]: getpeername (ftpd): Transport endpoint is not connected
+Jul 25 23:23:13 combo xinetd[26482]: warning: can't get client address: Connection reset by peer
+Jul 27 04:02:48 combo su(pam_unix)[7031]: session closed for user cyrus
+Jul 27 04:02:49 combo logrotate: ALERT exited abnormally with [1]
